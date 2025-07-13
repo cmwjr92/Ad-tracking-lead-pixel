@@ -1,151 +1,129 @@
-(function() {
-  console.log('Lead catcher starting...');
+(function(){
+var s=document.currentScript;if(!s){var scripts=document.querySelectorAll('script[data-webhook]');s=scripts[scripts.length-1];}
+var w=s?s.dataset.webhook:null;if(!w)return;
+
+function getAdData(){
+  var u=new URLSearchParams(location.search);var d={};
   
-  if (window.__leadCatcherLoaded) {
-    console.log('Already loaded, skipping');
-    return;
-  }
-  window.__leadCatcherLoaded = true;
+  // Google Ads (all variations)
+  ['gclid','gclsrc','gbraid','wbraid','msclkid','dclid'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
   
-  var config = window.__leadPixelConfig || {};
-  var ENDPOINT = config.endpoint;
+  // Facebook/Meta (all variations)  
+  ['fbclid','fbadid','fb_action_ids','fb_action_types','fb_source'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
   
-  console.log('Config:', config);
-  console.log('Endpoint:', ENDPOINT);
+  // UTM Parameters (all)
+  ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
   
-  if (!ENDPOINT) {
-    console.error('Missing endpoint configuration');
-    return;
-  }
+  // TikTok Ads
+  ['ttclid','tt_medium','tt_content'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
   
-  var utmData = {};
-  var urlParams = new URLSearchParams(location.search);
-  var utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'];
+  // Snapchat Ads
+  ['ScCid','snapchat_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
   
-  for (var i = 0; i < utmKeys.length; i++) {
-    var key = utmKeys[i];
-    var value = urlParams.get(key);
-    if (value) {
-      utmData[key] = value;
+  // Pinterest Ads
+  ['epik','pinterest_ct'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // LinkedIn Ads
+  ['li_fat_id','linkedin_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Twitter Ads
+  ['twclid','twitter_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // YouTube Ads
+  ['yclid','youtube_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Amazon Ads
+  ['amzn_click_id','amazon_ad_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Microsoft/Bing Ads
+  ['msclkid','ms_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Apple Search Ads
+  ['asa_click_id','apple_ad_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Taboola
+  ['tblci','taboola_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Outbrain
+  ['obOrigUrl','ob_click_id'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Affiliate/General tracking
+  ['affiliate_id','aff_id','ref','referrer','source','campaign','ad_id','creative_id','keyword','placement','position','network','device','audience'].forEach(function(k){if(u.get(k))d[k]=u.get(k);});
+  
+  // Custom tracking (common patterns)
+  u.forEach(function(v,k){
+    if(k.includes('click')||k.includes('track')||k.includes('campaign')||k.includes('source')||k.includes('medium')){
+      if(!d[k])d[k]=v;
     }
+  });
+  
+  return d;
+}
+
+function c(){
+  var i=document.querySelectorAll('input[type="email"],input[name*="email"],input[type="text"],input[name*="name"],input[name*="phone"]');
+  var d={};
+  i.forEach(function(x){if(x.value&&x.value.trim())d[x.name||x.id||x.placeholder||'field']=(x.value.trim());});
+  
+  if(Object.keys(d).length>0){
+    var payload={
+      type:'lead',
+      form_data:d,
+      ad_data:getAdData(),
+      page_url:location.href,
+      page_title:document.title,
+      referrer:document.referrer,
+      user_agent:navigator.userAgent,
+      timestamp:Date.now()
+    };
+    navigator.sendBeacon(w,JSON.stringify(payload));
+    return true;
   }
-  
-  console.log('UTM data:', utmData);
-  
-  var baseContext = {
-    page_url: location.href,
-    page_title: document.title,
-    referrer: document.referrer || null,
-    utm: utmData,
-    user_agent: navigator.userAgent,
-    timestamp: Date.now()
-  };
-  
-  function sendBeacon(payload) {
-    console.log('Sending beacon:', payload);
-    
-    var body = JSON.stringify(payload);
-    console.log('Payload size:', body.length, 'bytes');
-    
-    if (navigator.sendBeacon) {
-      console.log('Trying sendBeacon...');
-      var result = navigator.sendBeacon(ENDPOINT, body);
-      console.log('Beacon result:', result);
-      
-      if (result) {
-        console.log('Beacon sent successfully!');
-        return;
-      }
+  return false;
+}
+
+function a(){
+  var b=document.querySelectorAll('button,input[type="submit"],[role="button"],form');
+  b.forEach(function(x){
+    if(!x.dataset.pixelAttached){
+      x.addEventListener('click',function(){setTimeout(c,100);});
+      x.addEventListener('submit',function(){setTimeout(c,100);});
+      x.dataset.pixelAttached='true';
     }
-    
-    console.log('Using fetch fallback...');
-    fetch(ENDPOINT, {
-      method: 'POST',
-      body: body,
-      keepalive: true,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    }).then(function(response) {
-      console.log('Fetch response status:', response.status);
-      if (response.ok) {
-        console.log('Fetch sent successfully');
-      } else {
-        console.warn('Fetch failed with status:', response.status);
-      }
-    }).catch(function(error) {
-      console.warn('Fetch failed:', error.message);
+  });
+}
+
+function w(){
+  var e=document.querySelectorAll('input[type="email"],input[name*="email"]');
+  e.forEach(function(x){
+    if(!x.dataset.pixelAttached){
+      x.addEventListener('blur',function(){if(x.value&&x.value.includes('@'))setTimeout(c,500);});
+      x.dataset.pixelAttached='true';
+    }
+  });
+}
+
+function init(){
+  a();w();
+  if(typeof MutationObserver!=='undefined'){
+    var o=new MutationObserver(function(m){
+      m.forEach(function(mu){
+        mu.addedNodes.forEach(function(n){
+          if(n.nodeType===1){
+            if(n.tagName==='FORM'||n.tagName==='BUTTON')a();
+            if(n.querySelectorAll){
+              var f=n.querySelectorAll('form,button');
+              if(f.length>0)a();
+            }
+          }
+        });
+      });
     });
+    o.observe(document.body,{childList:true,subtree:true});
   }
-  
-  function handleFormSubmit(event) {
-    console.log('Form submit detected!', event.target);
-    
-    try {
-      var form = event.target;
-      var formData = new FormData(form);
-      var data = {};
-      
-      var entries = formData.entries();
-      var entry = entries.next();
-      while (!entry.done) {
-        data[entry.value[0]] = entry.value[1];
-        entry = entries.next();
-      }
-      
-      console.log('Form data:', data);
-      
-      if (Object.keys(data).length === 0) {
-        console.log('No form data found, skipping...');
-        return;
-      }
-      
-      var payload = {
-        type: 'lead',
-        context: baseContext,
-        form_data: data,
-        form_id: form.id || null,
-        form_action: form.action || null
-      };
-      
-      sendBeacon(payload);
-    } catch (error) {
-      console.error('Form submit error:', error);
-    }
-  }
-  
-  function attachToForms() {
-    var forms = document.querySelectorAll('form');
-    console.log('Found ' + forms.length + ' forms');
-    
-    for (var i = 0; i < forms.length; i++) {
-      var form = forms[i];
-      if (!form.dataset.leadCatcherAttached) {
-        console.log('Attaching to form ' + (i + 1));
-        form.addEventListener('submit', handleFormSubmit);
-        form.dataset.leadCatcherAttached = 'true';
-        console.log('Attached to form ' + (i + 1));
-      }
-    }
-  }
-  
-  function initialize() {
-    console.log('Initializing lead catcher...');
-    attachToForms();
-    
-    console.log('Sending pageview event...');
-    sendBeacon({
-      type: 'pageview',
-      context: baseContext
-    });
-    
-    console.log('Lead catcher ready!');
-  }
-  
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize);
-  } else {
-    initialize();
-  }
-  
+}
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+window.manualCapture=c;
+window.getAdTracking=getAdData;
 })();
