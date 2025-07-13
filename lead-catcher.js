@@ -1,24 +1,33 @@
 (function() {
   'use strict';
   
+  console.log('🚀 Lead catcher starting...');
+  
   // Prevent double loading
-  if (window.__leadCatcherLoaded) return;
+  if (window.__leadCatcherLoaded) {
+    console.log('⚠️ Lead catcher already loaded, skipping');
+    return;
+  }
   window.__leadCatcherLoaded = true;
   
   // Get config from global variable set by loader
   const config = window.__leadPixelConfig || {};
   const ENDPOINT = config.endpoint;
   
+  console.log('🔧 Lead catcher config:', config);
+  console.log('🎯 Endpoint:', ENDPOINT);
+  
   if (!ENDPOINT) {
-    console.warn('lead-catcher: missing endpoint configuration');
+    console.error('❌ Lead catcher: missing endpoint configuration');
     return;
   }
   
   // Validate endpoint URL
   try {
     new URL(ENDPOINT);
+    console.log('✅ Endpoint URL is valid');
   } catch (e) {
-    console.error('lead-catcher: invalid endpoint URL:', ENDPOINT);
+    console.error('❌ Lead catcher: invalid endpoint URL:', ENDPOINT, e);
     return;
   }
   
@@ -32,6 +41,8 @@
     if (value) utmData[key] = value;
   });
   
+  console.log('📊 UTM data captured:', utmData);
+  
   // Base context for all events
   const baseContext = {
     page_url: location.href,
@@ -42,28 +53,32 @@
     timestamp: Date.now()
   };
   
-  // Deduplication set
-  const sentEvents = new Set();
+  console.log('📋 Base context:', baseContext);
   
-  // Enhanced beacon function with retry logic
+  // Enhanced beacon function - sendBeacon FIRST since it works
   function sendBeacon(payload) {
+    console.log('📤 Attempting to send beacon:', payload);
+    
     const body = JSON.stringify(payload);
-    const eventHash = btoa(body).slice(0, 16); // Simple hash for deduplication
+    console.log('📦 Payload size:', body.length, 'bytes');
     
-    if (sentEvents.has(eventHash)) {
-      console.log('lead-catcher: duplicate event prevented');
-      return;
+    // Try sendBeacon FIRST (we know this works!)
+    if (navigator.sendBeacon) {
+      console.log('🧪 Trying navigator.sendBeacon (priority method)...');
+      const beaconResult = navigator.sendBeacon(ENDPOINT, body);
+      console.log('📡 Beacon result:', beaconResult);
+      
+      if (beaconResult) {
+        console.log('✅ Beacon sent successfully!');
+        return;
+      } else {
+        console.log('⚠️ Beacon failed, trying fetch fallback...');
+      }
+    } else {
+      console.log('⚠️ sendBeacon not available, using fetch...');
     }
     
-    sentEvents.add(eventHash);
-    
-    // Try sendBeacon first (non-blocking)
-    if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, body)) {
-      console.log('lead-catcher: beacon sent successfully');
-      return;
-    }
-    
-    // Fallback to fetch with keepalive
+    // Fallback to fetch only if sendBeacon fails
     fetch(ENDPOINT, {
       method: 'POST',
       body: body,
@@ -72,49 +87,76 @@
         'Content-Type': 'application/json'
       }
     }).then(response => {
+      console.log('📨 Fetch response status:', response.status);
+      console.log('📨 Fetch response ok:', response.ok);
+      
       if (response.ok) {
-        console.log('lead-catcher: fetch sent successfully');
+        console.log('✅ Fetch sent successfully');
+        return response.text();
       } else {
-        console.warn('lead-catcher: server returned', response.status);
+        console.warn('⚠️ Fetch failed with status:', response.status, '(but sendBeacon probably worked)');
+        return response.text().then(text => {
+          console.warn('⚠️ Fetch error response:', text);
+        });
+      }
+    }).then(responseText => {
+      if (responseText) {
+        console.log('📝 Fetch response body:', responseText);
       }
     }).catch(error => {
-      console.error('lead-catcher: failed to send data:', error);
+      console.warn('⚠️ Fetch request failed (but sendBeacon probably worked):', error.message);
     });
   }
   
   // Form submission handler
   function handleFormSubmit(event) {
+    console.log('🎯 Form submit detected!', event.target);
+    
     try {
       const form = event.target;
       const formData = new FormData(form);
       const data = Object.fromEntries(formData.entries());
       
-      // Only send if we have meaningful data
-      if (Object.keys(data).length === 0) return;
+      console.log('📝 Form data extracted:', data);
       
-      sendBeacon({
+      // Only send if we have meaningful data
+      if (Object.keys(data).length === 0) {
+        console.log('⚠️ No form data found, skipping...');
+        return;
+      }
+      
+      const payload = {
         type: 'lead',
         context: baseContext,
         form_data: data,
         form_id: form.id || null,
         form_action: form.action || null
-      });
+      };
+      
+      sendBeacon(payload);
     } catch (error) {
-      console.error('lead-catcher: form submit error:', error);
+      console.error('❌ Form submit handling error:', error);
     }
   }
   
   // Attach to existing forms
   function attachToForms() {
-    document.querySelectorAll('form').forEach(form => {
+    const forms = document.querySelectorAll('form');
+    console.log(`🔍 Found ${forms.length} forms on page`);
+    
+    forms.forEach((form, index) => {
       if (!form.dataset.leadCatcherAttached) {
+        console.log(`📎 Attaching to form ${index + 1}:`, form);
         form.addEventListener('submit', handleFormSubmit);
         form.dataset.leadCatcherAttached = 'true';
+        console.log(`✅ Attached to form ${index + 1}`);
+      } else {
+        console.log(`⚠️ Form ${index + 1} already has listener attached`);
       }
     });
   }
   
-  // Watch for new forms being added (SPA compatibility)
+  // Watch for new forms (SPA compatibility)
   function observeNewForms() {
     if (typeof MutationObserver !== 'undefined') {
       const observer = new MutationObserver(mutations => {
@@ -123,6 +165,7 @@
             if (node.nodeType === 1) { // Element node
               if (node.tagName === 'FORM') {
                 if (!node.dataset.leadCatcherAttached) {
+                  console.log('📎 New form detected, attaching listener');
                   node.addEventListener('submit', handleFormSubmit);
                   node.dataset.leadCatcherAttached = 'true';
                 }
@@ -131,6 +174,7 @@
               if (node.querySelectorAll) {
                 node.querySelectorAll('form').forEach(form => {
                   if (!form.dataset.leadCatcherAttached) {
+                    console.log('📎 New nested form detected, attaching listener');
                     form.addEventListener('submit', handleFormSubmit);
                     form.dataset.leadCatcherAttached = 'true';
                   }
@@ -148,66 +192,29 @@
     }
   }
   
-  // E-commerce checkout detection
-  function detectCheckouts() {
-    // Shopify checkout detection
-    if (window.Shopify && window.Shopify.checkout) {
-      sendBeacon({
-        type: 'checkout',
-        context: baseContext,
-        platform: 'shopify',
-        checkout_data: {
-          total_price: window.Shopify.checkout.total_price,
-          currency: window.Shopify.checkout.currency,
-          line_items: window.Shopify.checkout.line_items
-        }
-      });
-    }
-    
-    // ClickFunnels detection
-    if (window.CFPageData) {
-      sendBeacon({
-        type: 'checkout',
-        context: baseContext,
-        platform: 'clickfunnels',
-        checkout_data: window.CFPageData
-      });
-    }
-    
-    // GoHighLevel detection
-    if (window.ghl_checkout_data) {
-      sendBeacon({
-        type: 'checkout',
-        context: baseContext,
-        platform: 'gohighlevel',
-        checkout_data: window.ghl_checkout_data
-      });
-    }
-  }
-  
-  // Initialize when DOM is ready
+  // Initialize
   function initialize() {
+    console.log('🏁 Initializing lead catcher...');
     attachToForms();
     observeNewForms();
-    detectCheckouts();
     
     // Send page view event
+    console.log('📄 Sending pageview event...');
     sendBeacon({
       type: 'pageview',
       context: baseContext
     });
+    
+    console.log('✅ Lead catcher initialization complete');
   }
   
   // Start initialization
   if (document.readyState === 'loading') {
+    console.log('⏳ Waiting for DOM to load...');
     document.addEventListener('DOMContentLoaded', initialize);
   } else {
+    console.log('✅ DOM already loaded, initializing immediately');
     initialize();
   }
-  
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', () => {
-    sentEvents.clear();
-  });
   
 })();
