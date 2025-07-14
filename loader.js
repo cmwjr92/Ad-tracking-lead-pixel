@@ -1,5 +1,9 @@
 // loader.js - All-in-one version (no dynamic script creation)
 (function(){
+    'use strict';
+    if (window._leadCaptureLoaded) return;
+    window._leadCaptureLoaded = true;
+    console.log('🚀 Lead capture starting...');
     var scripts = document.getElementsByTagName('script');
     var currentScript = scripts[scripts.length - 1];
     var WEBHOOK_URL = currentScript.getAttribute('data-webhook');
