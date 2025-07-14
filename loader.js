@@ -1,19 +1,33 @@
-// loader.js - self-executing function
+// loader.js - Fixed webhook detection
 (function(){
     'use strict';
     if (window._leadCaptureLoaded) return;
     window._leadCaptureLoaded = true;
     console.log('🚀 Lead capture starting...');
-    var scripts = document.getElementsByTagName('script');
-    var currentScript = scripts[scripts.length - 1];
-    var WEBHOOK_URL = currentScript.getAttribute('data-webhook');
+    
+    // Find the script tag with data-webhook attribute
+    var WEBHOOK_URL = null;
+    var scripts = document.querySelectorAll('script[data-webhook]');
+    
+    if (scripts.length > 0) {
+        // Get the last script with data-webhook (in case there are multiple)
+        WEBHOOK_URL = scripts[scripts.length - 1].getAttribute('data-webhook');
+        console.log('✅ Found webhook URL:', WEBHOOK_URL);
+    } else {
+        // Fallback: check current script (for inline usage)
+        var currentScript = document.currentScript;
+        if (currentScript && currentScript.getAttribute('data-webhook')) {
+            WEBHOOK_URL = currentScript.getAttribute('data-webhook');
+        }
+    }
     
     if (!WEBHOOK_URL) {
-        console.error('Lead Capture: data-webhook attribute required');
+        console.error('❌ Lead Capture: data-webhook attribute required');
+        console.error('Please add data-webhook="YOUR_WEBHOOK_URL" to your script tag');
         return;
     }
     
-    console.log('🚀 Lead capture starting with webhook:', WEBHOOK_URL);
+    console.log('🎯 Lead capture initialized with webhook:', WEBHOOK_URL);
     
     var processed = [];
     
@@ -25,45 +39,67 @@
         
         for (var i = 0; i < inputs.length; i++) {
             var input = inputs[i];
-            console.log('Input ' + i + ':', input.name, input.value, input.type);
             
             if (input.value && input.value.trim() && !input.disabled && input.type !== 'submit' && input.type !== 'button') {
-                var key = input.name || input.id || input.type || 'field';
-                data[key] = input.value;
-                console.log('✅ Captured:', key, input.value);
+                var key = input.name || input.id || input.type || 'field_' + i;
+                
+                // Handle checkboxes and radios
+                if (input.type === 'checkbox' || input.type === 'radio') {
+                    if (input.checked) {
+                        data[key] = input.value || 'checked';
+                    }
+                } else {
+                    data[key] = input.value;
+                }
+                
+                console.log('✅ Captured:', key, '=', data[key]);
             }
         }
         
-        // Add URL parameters
+        // Add URL parameters for tracking
         var urlParams = new URLSearchParams(window.location.search);
         var tracking = {};
-        var trackingParams = ['gclid', 'fbclid', 'utm_source', 'utm_medium', 'utm_campaign'];
+        
+        // Comprehensive tracking parameters
+        var trackingParams = [
+            'gclid', 'fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+            'msclkid', 'ttclid', 'li_fat_id', 'twclid', 'gbraid', 'wbraid', 'ScCid', 'epik'
+        ];
+        
         for (var i = 0; i < trackingParams.length; i++) {
             var value = urlParams.get(trackingParams[i]);
             if (value) tracking[trackingParams[i]] = value;
         }
-        if (Object.keys(tracking).length > 0) data._tracking = tracking;
         
-        data._meta = { url: location.href, time: Date.now() };
-        console.log('📦 Final data:', data);
+        if (Object.keys(tracking).length > 0) {
+            data._tracking = tracking;
+            console.log('📊 Added tracking params:', tracking);
+        }
+        
+        data._meta = { 
+            url: location.href, 
+            time: Date.now(),
+            referrer: document.referrer || 'direct'
+        };
+        
+        console.log('📦 Final captured data:', data);
         return data;
     }
     
     function send(data, context) {
-        console.log('📡 Sending to webhook...', context);
+        console.log('📡 Preparing to send to webhook...', context);
         
-        // Check if we have actual form data
-        var keys = Object.keys(data);
+        // Check if we have actual form data (not just metadata)
         var hasFormData = false;
-        for (var i = 0; i < keys.length; i++) {
-            if (keys[i] !== '_meta' && keys[i] !== '_tracking') {
+        for (var key in data) {
+            if (data.hasOwnProperty(key) && key !== '_meta' && key !== '_tracking') {
                 hasFormData = true;
                 break;
             }
         }
         
         if (!hasFormData) {
-            console.log('❌ No form data to send');
+            console.log('⚠️ No form data to send (only metadata)');
             return false;
         }
         
@@ -77,6 +113,12 @@
         }
         processed.push(id);
         
+        // Remove old entries after 5 seconds
+        setTimeout(function() {
+            var index = processed.indexOf(id);
+            if (index > -1) processed.splice(index, 1);
+        }, 5000);
+        
         var payload = {
             d: data,
             u: location.href,
@@ -85,37 +127,67 @@
         };
         
         console.log('🚀 Sending payload:', payload);
+        console.log('📡 Webhook URL:', WEBHOOK_URL);
         
-        if (navigator.sendBeacon) {
-            var result = navigator.sendBeacon(WEBHOOK_URL, JSON.stringify(payload));
-            console.log('✅ Webhook sent via beacon:', result);
-            return result;
-        } else {
-            console.log('📡 Using XMLHttpRequest fallback...');
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', WEBHOOK_URL, true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.onload = function() {
-                console.log('✅ Webhook response:', xhr.status);
-            };
-            xhr.onerror = function() {
-                console.log('❌ Webhook error');
-            };
-            xhr.send(JSON.stringify(payload));
-            return true;
+        try {
+            if (navigator.sendBeacon) {
+                var result = navigator.sendBeacon(WEBHOOK_URL, JSON.stringify(payload));
+                console.log(result ? '✅ Sent via beacon successfully' : '❌ Beacon failed');
+                if (!result) {
+                    // Fallback to fetch if beacon fails
+                    sendViaFetch(payload);
+                }
+                return result;
+            } else {
+                // Use fetch for older browsers
+                sendViaFetch(payload);
+                return true;
+            }
+        } catch (error) {
+            console.error('❌ Send error:', error);
+            return false;
         }
+    }
+    
+    function sendViaFetch(payload) {
+        console.log('📡 Using fetch fallback...');
+        fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+            mode: 'no-cors' // Avoid CORS issues
+        }).then(function() {
+            console.log('✅ Sent via fetch');
+        }).catch(function(error) {
+            console.error('❌ Fetch error:', error);
+        });
     }
     
     // Handle button clicks
     document.addEventListener('click', function(e) {
         var target = e.target;
-        console.log('🖱️ Click detected on:', target.tagName, target.textContent);
         
-        var text = target.textContent || target.value || '';
-        if (target.tagName === 'BUTTON' && /submit|send|join|sign|register|subscribe|reserve/i.test(text)) {
-            console.log('✅ Submit button clicked');
-            var data = capture();
-            send(data, 'button_click');
+        // Check if it's a submit button
+        var isSubmit = false;
+        if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') {
+            var type = target.type || '';
+            var text = (target.textContent || target.value || '').toLowerCase();
+            
+            isSubmit = (
+                type === 'submit' ||
+                (target.tagName === 'BUTTON' && !type) || // Default button type is submit
+                /submit|send|join|sign|register|subscribe|reserve|continue|next|complete/.test(text)
+            );
+        }
+        
+        if (isSubmit) {
+            console.log('✅ Submit button clicked:', target.textContent || target.value);
+            
+            // Small delay to allow form values to update
+            setTimeout(function() {
+                var data = capture();
+                send(data, 'button_click');
+            }, 100);
         }
     });
     
@@ -124,14 +196,16 @@
         console.log('📋 Form submission detected');
         var data = capture();
         send(data, 'form_submit');
-    });
+    }, true); // Use capture phase to run before other handlers
     
     // Manual test function
     window.testLeadCapture = function() {
         console.log('🧪 Manual test triggered');
         var data = capture();
+        data.test_field = 'Manual test at ' + new Date().toISOString();
         return send(data, 'manual_test');
     };
     
-    console.log('✅ Lead capture ready - testLeadCapture() available');
+    console.log('✅ Lead capture ready!');
+    console.log('💡 Test with: testLeadCapture()');
 })();
