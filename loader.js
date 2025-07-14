@@ -1,4 +1,4 @@
-// loader.js - Fixed version
+// loader.js - Fixed to use raw GitHub URL
 (function(){
     // Find the script tag that loaded this file
     var scripts = document.getElementsByTagName('script');
@@ -13,7 +13,8 @@
     console.log('Loading lead capture with webhook:', webhook);
     
     var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/gh/cmwjr92/Ad-tracking-lead-pixel@main/universal.min.js';
+    // Use raw GitHub URL instead of CDN (which is cached)
+    s.src = 'https://raw.githubusercontent.com/cmwjr92/Ad-tracking-lead-pixel/main/universal.min.js';
     s.setAttribute('data-webhook', webhook);
     s.onload = function() {
         console.log('Lead capture script loaded successfully');
