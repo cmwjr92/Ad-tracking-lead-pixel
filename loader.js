@@ -1,4 +1,4 @@
-// loader.js - All-in-one version (no dynamic script creation)
+// loader.js - self-executing function
 (function(){
     'use strict';
     if (window._leadCaptureLoaded) return;
