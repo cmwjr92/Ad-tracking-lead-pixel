@@ -1,100 +1,133 @@
-// loader.js - Bulletproof version for all browsers
+// loader.js - All-in-one version (no dynamic script creation)
 (function(){
     var scripts = document.getElementsByTagName('script');
     var currentScript = scripts[scripts.length - 1];
-    var webhook = currentScript.getAttribute('data-webhook');
+    var WEBHOOK_URL = currentScript.getAttribute('data-webhook');
     
-    if (!webhook) {
+    if (!WEBHOOK_URL) {
         console.error('Lead Capture: data-webhook attribute required');
         return;
     }
     
-    console.log('Loading lead capture with webhook:', webhook);
+    console.log('🚀 Lead capture starting with webhook:', WEBHOOK_URL);
     
-    // Create script with old-school string concatenation (works everywhere)
-    var script = document.createElement('script');
-    var scriptContent = '';
+    var processed = [];
     
-    scriptContent += '(function() {';
-    scriptContent += 'console.log("🚀 Lead capture starting...");';
-    scriptContent += 'var WEBHOOK_URL = "' + webhook + '";';
-    scriptContent += 'var processed = [];';
-    scriptContent += 'function capture() {';
-    scriptContent += 'console.log("📋 Capturing...");';
-    scriptContent += 'var data = {};';
-    scriptContent += 'var inputs = document.querySelectorAll("input, select, textarea");';
-    scriptContent += 'console.log("Found inputs:", inputs.length);';
-    scriptContent += 'for (var i = 0; i < inputs.length; i++) {';
-    scriptContent += 'var input = inputs[i];';
-    scriptContent += 'console.log("Input " + i + ":", input.name, input.value, input.type);';
-    scriptContent += 'if (input.value && input.value.trim() && !input.disabled && input.type !== "submit" && input.type !== "button") {';
-    scriptContent += 'var key = input.name || input.id || input.type || "field";';
-    scriptContent += 'data[key] = input.value;';
-    scriptContent += 'console.log("✅ Captured:", key, input.value);';
-    scriptContent += '}';
-    scriptContent += '}';
-    scriptContent += 'data._meta = { url: location.href, time: Date.now() };';
-    scriptContent += 'console.log("📦 Data:", data);';
-    scriptContent += 'return data;';
-    scriptContent += '}';
-    scriptContent += 'function send(data, ctx) {';
-    scriptContent += 'console.log("📡 Sending...", ctx);';
-    scriptContent += 'var keys = Object.keys(data);';
-    scriptContent += 'var hasData = false;';
-    scriptContent += 'for (var i = 0; i < keys.length; i++) {';
-    scriptContent += 'if (keys[i] !== "_meta") hasData = true;';
-    scriptContent += '}';
-    scriptContent += 'if (!hasData) {';
-    scriptContent += 'console.log("❌ No data");';
-    scriptContent += 'return false;';
-    scriptContent += '}';
-    scriptContent += 'var id = JSON.stringify(data) + location.href;';
-    scriptContent += 'for (var i = 0; i < processed.length; i++) {';
-    scriptContent += 'if (processed[i] === id) {';
-    scriptContent += 'console.log("🚫 Duplicate");';
-    scriptContent += 'return false;';
-    scriptContent += '}';
-    scriptContent += '}';
-    scriptContent += 'processed.push(id);';
-    scriptContent += 'var payload = { d: data, u: location.href, t: Date.now(), context: ctx };';
-    scriptContent += 'console.log("🚀 Payload:", payload);';
-    scriptContent += 'if (navigator.sendBeacon) {';
-    scriptContent += 'var result = navigator.sendBeacon(WEBHOOK_URL, JSON.stringify(payload));';
-    scriptContent += 'console.log("✅ Sent:", result);';
-    scriptContent += 'return result;';
-    scriptContent += '} else {';
-    scriptContent += 'var xhr = new XMLHttpRequest();';
-    scriptContent += 'xhr.open("POST", WEBHOOK_URL, true);';
-    scriptContent += 'xhr.setRequestHeader("Content-Type", "application/json");';
-    scriptContent += 'xhr.onload = function() { console.log("✅ Response:", xhr.status); };';
-    scriptContent += 'xhr.onerror = function() { console.log("❌ Error"); };';
-    scriptContent += 'xhr.send(JSON.stringify(payload));';
-    scriptContent += 'return true;';
-    scriptContent += '}';
-    scriptContent += '}';
-    scriptContent += 'document.addEventListener("click", function(e) {';
-    scriptContent += 'console.log("🖱️ Click:", e.target.tagName, e.target.textContent);';
-    scriptContent += 'var text = e.target.textContent || e.target.value || "";';
-    scriptContent += 'if (e.target.tagName === "BUTTON" && /submit|send|join|sign|register|subscribe|reserve/i.test(text)) {';
-    scriptContent += 'console.log("✅ Submit button");';
-    scriptContent += 'var data = capture();';
-    scriptContent += 'send(data, "click");';
-    scriptContent += '}';
-    scriptContent += '});';
-    scriptContent += 'document.addEventListener("submit", function(e) {';
-    scriptContent += 'console.log("📋 Submit");';
-    scriptContent += 'var data = capture();';
-    scriptContent += 'send(data, "submit");';
-    scriptContent += '});';
-    scriptContent += 'window.testLeadCapture = function() {';
-    scriptContent += 'console.log("🧪 Test");';
-    scriptContent += 'var data = capture();';
-    scriptContent += 'return send(data, "test");';
-    scriptContent += '};';
-    scriptContent += 'console.log("✅ Ready");';
-    scriptContent += '})();';
+    function capture() {
+        console.log('📋 Capturing form data...');
+        var data = {};
+        var inputs = document.querySelectorAll('input, select, textarea');
+        console.log('🔍 Found inputs:', inputs.length);
+        
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            console.log('Input ' + i + ':', input.name, input.value, input.type);
+            
+            if (input.value && input.value.trim() && !input.disabled && input.type !== 'submit' && input.type !== 'button') {
+                var key = input.name || input.id || input.type || 'field';
+                data[key] = input.value;
+                console.log('✅ Captured:', key, input.value);
+            }
+        }
+        
+        // Add URL parameters
+        var urlParams = new URLSearchParams(window.location.search);
+        var tracking = {};
+        var trackingParams = ['gclid', 'fbclid', 'utm_source', 'utm_medium', 'utm_campaign'];
+        for (var i = 0; i < trackingParams.length; i++) {
+            var value = urlParams.get(trackingParams[i]);
+            if (value) tracking[trackingParams[i]] = value;
+        }
+        if (Object.keys(tracking).length > 0) data._tracking = tracking;
+        
+        data._meta = { url: location.href, time: Date.now() };
+        console.log('📦 Final data:', data);
+        return data;
+    }
     
-    script.innerHTML = scriptContent;
-    document.head.appendChild(script);
-    console.log('🚀 Inline script added');
+    function send(data, context) {
+        console.log('📡 Sending to webhook...', context);
+        
+        // Check if we have actual form data
+        var keys = Object.keys(data);
+        var hasFormData = false;
+        for (var i = 0; i < keys.length; i++) {
+            if (keys[i] !== '_meta' && keys[i] !== '_tracking') {
+                hasFormData = true;
+                break;
+            }
+        }
+        
+        if (!hasFormData) {
+            console.log('❌ No form data to send');
+            return false;
+        }
+        
+        // Check for duplicates
+        var id = JSON.stringify(data) + location.href;
+        for (var i = 0; i < processed.length; i++) {
+            if (processed[i] === id) {
+                console.log('🚫 Duplicate submission blocked');
+                return false;
+            }
+        }
+        processed.push(id);
+        
+        var payload = {
+            d: data,
+            u: location.href,
+            t: Date.now(),
+            context: context
+        };
+        
+        console.log('🚀 Sending payload:', payload);
+        
+        if (navigator.sendBeacon) {
+            var result = navigator.sendBeacon(WEBHOOK_URL, JSON.stringify(payload));
+            console.log('✅ Webhook sent via beacon:', result);
+            return result;
+        } else {
+            console.log('📡 Using XMLHttpRequest fallback...');
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', WEBHOOK_URL, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = function() {
+                console.log('✅ Webhook response:', xhr.status);
+            };
+            xhr.onerror = function() {
+                console.log('❌ Webhook error');
+            };
+            xhr.send(JSON.stringify(payload));
+            return true;
+        }
+    }
+    
+    // Handle button clicks
+    document.addEventListener('click', function(e) {
+        var target = e.target;
+        console.log('🖱️ Click detected on:', target.tagName, target.textContent);
+        
+        var text = target.textContent || target.value || '';
+        if (target.tagName === 'BUTTON' && /submit|send|join|sign|register|subscribe|reserve/i.test(text)) {
+            console.log('✅ Submit button clicked');
+            var data = capture();
+            send(data, 'button_click');
+        }
+    });
+    
+    // Handle form submissions
+    document.addEventListener('submit', function(e) {
+        console.log('📋 Form submission detected');
+        var data = capture();
+        send(data, 'form_submit');
+    });
+    
+    // Manual test function
+    window.testLeadCapture = function() {
+        console.log('🧪 Manual test triggered');
+        var data = capture();
+        return send(data, 'manual_test');
+    };
+    
+    console.log('✅ Lead capture ready - testLeadCapture() available');
 })();
